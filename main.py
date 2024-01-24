@@ -5,8 +5,8 @@ from discord.ext import commands
 from commands import Commands
 from dotenv import load_dotenv
 from DisBot import bot, load_available_words
-
 load_dotenv()
+
 coms = Commands(bot)
 
 @bot.event
@@ -19,6 +19,7 @@ async def on_ready():
     await bot.change_presence(activity=discord.Activity(
         type=discord.ActivityType.listening, name='Шамана'))
     await load_available_words()
+    print(f'{bot.user} has')
 
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 bot.run(TOKEN)

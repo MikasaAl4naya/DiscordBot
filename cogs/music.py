@@ -13,6 +13,7 @@ class Music(commands.Cog):
         bot.loop.create_task(self.create_nodes())
         # Создайте словарь для хранения очередей для каждого сервера
         self.queues = {}
+        self.current_queue_messages = {}
 
     async def create_nodes(self):
         await self.bot.wait_until_ready()
@@ -55,16 +56,25 @@ class Music(commands.Cog):
                           'pl', 'PL', 'Pl', 'з', 'З', 'зд', 'ЗД', 'Зд', 'Плей',
                           'ПЛЕЙ', 'плей'])
     async def play(self, ctx: commands.Context, *, search: str):
-        search = await wavelink.YouTubeTrack.search(query=search, return_first=True)
         if not ctx.voice_client:
             vc: wavelink.Player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
         else:
             vc: wavelink.Player = ctx.voice_client
+
         # Проверьте, существует ли очередь для сервера
         if ctx.guild.id not in self.queues:
             self.queues[ctx.guild.id] = asyncio.Queue()
-        # Поместите трек в очередь
-        await self.queues[ctx.guild.id].put(search)
+
+        # Получите треки для запроса
+        tracks = await wavelink.YouTubeTrack.search(query=search)
+
+        # Если возвращен плейлист, добавьте все его треки в очередь
+        if isinstance(tracks, wavelink.YouTubePlaylist):
+            for track in tracks.tracks:
+                await self.queues[ctx.guild.id].put(track)
+        elif isinstance(tracks, wavelink.YouTubeTrack):
+            # Если возвращен одиночный трек, добавьте его в очередь
+            await self.queues[ctx.guild.id].put(tracks)
         # Если плеер не играет, начните воспроизведение
         if not vc.is_playing():
             await self.play_queue(ctx, vc)
@@ -80,6 +90,13 @@ class Music(commands.Cog):
             queue.put_nowait(track)
             # Воспроизведите трек
             await vc.play(track)
+            # Удаляем предыдущее сообщение с очередью, если оно существует
+            if ctx.guild.id in self.current_queue_messages:
+
+                await self.current_queue_messages[ctx.guild.id].delete()
+
+            # Показать текущую очередь
+            await self.queue(ctx)
             # Дождитесь окончания воспроизведения
             while vc.is_playing():
                 await asyncio.sleep(1)
@@ -89,10 +106,10 @@ class Music(commands.Cog):
         await vc.disconnect()
 
     @commands.command(aliases=['Queue', 'QUEUE', 'йгугу', 'Йгугу', 'ЙГУГУ', 'очередь',
-                          'Очередь', 'ОЧЕРЕДЬ', 'список', 'Список', 'СПИСОК',
-                          'list', 'List', 'LIST', 'дшые', 'Дшые', 'ДШЫЕ', 'Лист',
-                          'лист', 'ЛИСТ', 'песни', 'Песни', 'ПЕСНИ', 'songs',
-                          'Songs', 'SONGS', 'ыщтпы', 'ЫЩТПЫ', 'Ыщтпы', 'q'])
+                               'Очередь', 'ОЧЕРЕДЬ', 'список', 'Список', 'СПИСОК',
+                               'list', 'List', 'LIST', 'дшые', 'Дшые', 'ДШЫЕ', 'Лист',
+                               'лист', 'ЛИСТ', 'песни', 'Песни', 'ПЕСНИ', 'songs',
+                               'Songs', 'SONGS', 'ыщтпы', 'ЫЩТПЫ', 'Ыщтпы', 'q'])
     async def queue(self, ctx: commands.Context):
         """Show the current queue."""
         # Получите очередь для сервера
@@ -102,11 +119,17 @@ class Music(commands.Cog):
 
         # Получите текущий трек без его удаления из очереди
         current_track = await queue.get()
+        queue.put_nowait(current_track)
+
+        # Получите следующие 5 треков из очереди
+        next_tracks = [
+            track for _, track in zip(range(5), iter(queue._queue))
+        ]
 
         # Соберите треки из очереди
         tracks = [
             f"{index + 1}. {track.title} - {str(int(track.duration // 60))}:{str(int(track.duration) % 60).zfill(2)}"
-            for index, track in enumerate(queue._queue)
+            for index, track in enumerate(next_tracks)
         ]
 
         # Отправьте сообщение с текущей очередью в виде Embed
@@ -118,10 +141,18 @@ class Music(commands.Cog):
                         value=f"**{current_track.title}** - *{str(int(current_track.duration // 60))}:{str(int(current_track.duration) % 60).zfill(2)}*",
                         inline=False)
 
-        # Добавьте список остальных треков
+        # Добавьте список следующих треков
         embed.add_field(name="📜 Очередь", value="\n".join(tracks), inline=False)
 
-        await ctx.send(embed=embed)
+        # Проверим, есть ли предыдущее сообщение и удалим его
+        if ctx.guild.id in self.current_queue_messages:
+            try:
+                await self.current_queue_messages[ctx.guild.id].delete()
+            except discord.NotFound:
+                pass  # Если сообщение уже удалено
+
+        # Отправьте сообщение с текущей очередью и сохраните его для последующего удаления
+        self.current_queue_messages[ctx.guild.id] = await ctx.send(embed=embed)
 
     @commands.command(name="stop")
     async def stop_command(self, ctx: commands.Context):
@@ -132,7 +163,15 @@ class Music(commands.Cog):
             return await ctx.reply("В канал зайди")
 
         if player.is_playing:
+            # Остановите воспроизведение текущего трека
             await player.stop()
+
+            # Очистите очередь
+            queue = self.queues.get(ctx.guild.id)
+            if queue:
+                queue._queue.clear()
+
+            # Отправьте сообщение об остановке
             mbed = discord.Embed(title="Стопанул", color=discord.Color.from_rgb(255, 255, 255))
             return await ctx.send(embed=mbed)
         else:
