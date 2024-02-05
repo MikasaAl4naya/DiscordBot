@@ -1,7 +1,6 @@
+import asyncio
 import os
-
 import discord
-from discord.ext import commands
 from commands import Commands
 from dotenv import load_dotenv
 from DisBot import bot, load_available_words
@@ -22,4 +21,5 @@ async def on_ready():
     print(f'{bot.user} has')
 
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+
 bot.run(TOKEN)

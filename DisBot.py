@@ -20,9 +20,9 @@ class MyBOT():
 
 @bot.event
 async def on_member_join(member):
-    role_id = 771010023177453609  # Замените на ID вашей роли
+    role_id = 771010023177453609
     role = discord.utils.get(member.guild.roles, id=role_id)
-
+    print(role)
     if role:
         try:
             await member.add_roles(role)
@@ -43,7 +43,7 @@ async def on_member_join(member):
 
         await member.edit(nick=f'{cum_word}')
         for ch in bot.get_guild(member.guild.id).channels:
-            if ch.name == 'основной':
+            if ch.name == 'хуй':
                 try:
                     await bot.get_channel(ch.id).send(f'{member}, Теперь тебя зовут {member.nick}, чушпан')
                 except:
